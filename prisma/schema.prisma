@@ -1,0 +1,24 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model Conversion {
+  id           Int      @id @default(autoincrement())
+  filename     String
+  originalName String
+  filetype     String
+  fileSize     Int
+  pdfFilename  String?
+  userEmail    String?
+  uploadTime   DateTime @default(now())
+  status       String   @default("pending")
+  
+  @@index([status])
+  @@index([uploadTime])
+}

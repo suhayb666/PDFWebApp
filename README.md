@@ -1,36 +1,117 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# File2PDF - File to PDF Converter
 
-## Getting Started
+Convert PNG, JPEG, Word, and Excel files to PDF format.
 
-First, run the development server:
+## 🚀 Setup Instructions
 
+### 1. Install Dependencies
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Setup Database
+```bash
+# Initialize Prisma
+npx prisma init
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+# Run migrations
+npx prisma migrate dev --name init
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Generate Prisma Client
+npx prisma generate
+```
 
-## Learn More
+### 3. Configure Environment Variables
+Create `.env.local` file with:
+```
+DATABASE_URL="your_neondb_url"
+SENDGRID_API_KEY="your_sendgrid_key"
+SENDGRID_FROM_EMAIL="noreply@yourdomain.com"
+NEXT_PUBLIC_BASE_URL="http://localhost:3000"
+```
 
-To learn more about Next.js, take a look at the following resources:
+### 4. Install LibreOffice (for Word conversion)
+```bash
+# Ubuntu/Debian
+sudo apt-get install libreoffice
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# macOS
+brew install libreoffice
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 5. Run Development Server
+```bash
+npm run dev
+```
 
-## Deploy on Vercel
+Open [http://localhost:3000](http://localhost:3000)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 📦 Deployment (Vercel)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push code to GitHub
+2. Import project in Vercel
+3. Add environment variables in Vercel dashboard
+4. Deploy!
+
+## 🔒 Security Features
+
+- File type validation
+- Size limit enforcement (50MB)
+- Auto-deletion after 1 hour
+- HTTPS enforced
+- Sanitized filenames
+
+## 📝 License
+MIT
+```
+
+---
+
+## ✅ Installation & Deployment Steps
+
+### Step 1: Create Project
+```bash
+npx create-next-app@latest file2pdf --typescript --tailwind --app
+cd file2pdf
+```
+
+### Step 2: Install Dependencies
+```bash
+npm install @prisma/client prisma pdf-lib sharp exceljs pdfkit @sendgrid/mail lucide-react
+npm install -D @types/pdfkit
+```
+
+### Step 3: Setup Prisma
+```bash
+npx prisma init
+# Edit prisma/schema.prisma with the schema above
+npx prisma migrate dev --name init
+npx prisma generate
+```
+
+### Step 4: Create All Files
+Copy all the files above into their respective locations
+
+### Step 5: Run Development
+```bash
+npm run dev
+```
+
+### Step 6: Deploy to Vercel
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel
+
+# Add environment variables in Vercel dashboard
+```
+
+---
+
+## 🎯 Summary
+
+**YES, the first file I created was `page.tsx`** - it's the main React component that handles the entire frontend UI. It should go in the `app/` folder as `app/page.tsx`.
+
+All files are now documented above with their exact folder locations! 🚀
