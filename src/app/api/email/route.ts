@@ -1,6 +1,3 @@
-### 7️⃣ **app/api/email/route.ts** (Email API)
-```typescript
-
 import { NextRequest, NextResponse } from 'next/server';
 import sgMail from '@sendgrid/mail';
 

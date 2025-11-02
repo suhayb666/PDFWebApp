@@ -1,5 +1,3 @@
-### 5️⃣ **app/api/convert/route.ts** (Conversion API)
-```typescript
 import { NextRequest, NextResponse } from 'next/server';
 import { join } from 'path';
 import prisma from '@/lib/db';

@@ -1,13 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    experimental: {
-      serverActions: true,
-    },
-    api: {
-      bodyParser: {
-        sizeLimit: '50mb',
-      },
-    },
-  }
-  
-  module.exports = nextConfig
+  experimental: {
+    // Remove serverActions if present
+  },
+  images: {
+    domains: [],
+  },
+  reactStrictMode: true,
+  swcMinify: true,
+};
+
+module.exports = nextConfig;

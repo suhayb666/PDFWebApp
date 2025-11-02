@@ -1,5 +1,3 @@
-### 6️⃣ **app/api/download/[id]/route.ts** (Download API)
-```typescript
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
