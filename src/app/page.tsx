@@ -3,6 +3,10 @@
 
 import React, { useState, useCallback } from 'react';
 import { Upload, FileText, Download, X, Check, AlertCircle, Loader2, Mail } from 'lucide-react';
+import Link from 'next/link';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
+
 
 // Type definitions
 interface FileWithMetadata {
@@ -110,43 +114,83 @@ const File2PDF = () => {
 
   const convertFiles = async () => {
     if (files.length === 0) return;
-
+  
     setConverting(true);
-    
-    const convertedFiles: ConvertedFile[] = [];
-    
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
-      // Update status to converting
-      setFiles(prev => prev.map(f => 
-        f.id === file.id ? { ...f, status: 'converting' as const } : f
-      ));
-
-      // Simulate conversion delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Mark as converted
-      setFiles(prev => prev.map(f => 
-        f.id === file.id ? { ...f, status: 'converted' as const } : f
-      ));
-
-      convertedFiles.push({
-        id: file.id,
-        originalName: file.name,
-        pdfName: file.name.replace(/\.[^/.]+$/, '') + '.pdf',
-        size: Math.round(file.size * 0.8) // Simulated PDF size
+  
+    try {
+      // Step 1: Upload files first
+      const formData = new FormData();
+      files.forEach((fileItem) => {
+        formData.append('files', fileItem.file);
       });
+  
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+  
+      if (!uploadRes.ok) {
+        throw new Error('Failed to upload files');
+      }
+  
+      const uploadResult = await uploadRes.json();
+  
+      // Step 2: Convert uploaded files
+      const convertRes = await fetch('/api/convert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: uploadResult.files,
+          merge: mergeFiles,
+        }),
+      });
+  
+      if (!convertRes.ok) {
+        throw new Error('Failed to convert files');
+      }
+  
+      const convertResult = await convertRes.json();
+  
+      // Update UI with converted files
+      setConverted(convertResult.files.map((f: any) => ({
+        id: Number(f.id),
+        originalName: f.originalName,
+        pdfName: f.pdfFilename,
+        size: f.fileSize ?? 0,
+      })));
+    } catch (err) {
+      alert('Failed to convert files.');
+      console.error(err);
     }
-
-    setConverted(convertedFiles);
+  
     setConverting(false);
   };
 
-  const downloadFile = (fileName: string) => {
-    // In production, this would download the actual converted PDF
-    alert(`Downloading ${fileName}...`);
+  const downloadFile = async (fileId: number, pdfName: string) => {
+    try {
+      const response = await fetch(`/api/download/${fileId}`);
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+      const blob = await response.blob();
+  
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = pdfName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+  
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("Failed to download file.");
+    }
   };
+  
 
   const downloadAll = () => {
     alert('Downloading all files as ZIP...');
@@ -170,21 +214,7 @@ const File2PDF = () => {
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-indigo-50">
       {/* Navbar */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <FileText className="w-8 h-8 text-blue-600" />
-              <span className="text-2xl font-bold text-gray-900">File2PDF</span>
-            </div>
-            <div className="flex space-x-6">
-              <a href="#" className="text-gray-600 hover:text-blue-600 transition">Home</a>
-              <a href="#" className="text-gray-600 hover:text-blue-600 transition">About</a>
-              <a href="#" className="text-gray-600 hover:text-blue-600 transition">Privacy</a>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       <div className="max-w-5xl mx-auto px-4 py-12">
         {/* Hero Section */}
@@ -200,6 +230,7 @@ const File2PDF = () => {
               Supports PNG, JPEG, Word, and Excel files
             </p>
           </div>
+          
         )}
 
         {/* Upload Area */}
@@ -332,31 +363,31 @@ const File2PDF = () => {
             </div>
 
             <div className="space-y-3 mb-6">
-              {converted.map((file) => (
-                <div
-                  key={file.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
-                >
-                  <div className="flex items-center space-x-3">
-                    <FileText className="w-6 h-6 text-red-600" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {file.pdfName}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(file.size)}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => downloadFile(file.pdfName)}
-                    className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span className="text-sm font-medium">Download</span>
-                  </button>
-                </div>
-              ))}
+            {converted.map((file) => (
+              <div
+                key={file.id}
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+  >
+              <div className="flex items-center space-x-3">
+      <FileText className="w-6 h-6 text-red-600" />
+      <div>
+        <p className="text-sm font-medium text-gray-900">
+          {file.pdfName}
+        </p>
+        <p className="text-xs text-gray-500">
+          {formatFileSize(file.size)}
+        </p>
+      </div>
+    </div>
+    <button
+      onClick={() => downloadFile(file.id, file.pdfName)}
+      className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+    >
+      <Download className="w-4 h-4" />
+      <span className="text-sm font-medium">Download</span>
+    </button>
+  </div>
+))}
             </div>
 
             {converted.length > 1 && (
@@ -442,21 +473,7 @@ const File2PDF = () => {
       </div>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8 mt-20">
-        <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-gray-400">
-            © 2025 File2PDF. All rights reserved.
-          </p>
-          <div className="mt-4 space-x-6">
-            <a href="#" className="text-gray-400 hover:text-white transition text-sm">
-              Privacy Policy
-            </a>
-            <a href="#" className="text-gray-400 hover:text-white transition text-sm">
-              Terms of Service
-            </a>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

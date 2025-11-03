@@ -9,25 +9,30 @@ import { readFile, writeFile } from 'fs/promises';
 
 export async function POST(request: NextRequest) {
   try {
-    const { fileIds, merge } = await request.json();
+    const { files, merge } = await request.json();
 
-    if (!fileIds || fileIds.length === 0) {
-      return NextResponse.json(
-        { error: 'No files provided' },
-        { status: 400 }
-      );
+    if (!files || files.length === 0) {
+      return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
-
-    const conversions = await prisma.conversion.findMany({
-      where: {
-        id: { in: fileIds },
-      },
-    });
 
     const uploadDir = join(process.cwd(), 'public', 'uploads');
     const convertedFiles = [];
 
-    for (const conversion of conversions) {
+    for (const file of files) {
+      // Create DB entry WITHOUT specifying id (let Prisma auto-generate)
+      const conversion = await prisma.conversion.create({
+        data: {
+          filename: file.filename,
+          originalName: file.originalName,
+          filetype: file.filetype,
+          fileSize: file.fileSize,
+          pdfFilename: null,
+          userEmail: file.userEmail || null,
+          uploadTime: new Date(),
+          status: 'pending',
+        },
+      });
+
       const inputPath = join(uploadDir, conversion.filename);
       const outputFilename = conversion.filename.replace(/\.[^/.]+$/, '') + '.pdf';
       const outputPath = join(uploadDir, outputFilename);
@@ -38,7 +43,10 @@ export async function POST(request: NextRequest) {
           await convertImageToPDF(inputPath, outputPath);
         } else if (conversion.filetype.includes('word')) {
           await convertWordToPDF(inputPath, outputPath);
-        } else if (conversion.filetype.includes('sheet') || conversion.filetype.includes('excel')) {
+        } else if (
+          conversion.filetype.includes('sheet') ||
+          conversion.filetype.includes('excel')
+        ) {
           await convertExcelToPDF(inputPath, outputPath);
         }
 
@@ -52,9 +60,11 @@ export async function POST(request: NextRequest) {
         });
 
         convertedFiles.push({
-          id: conversion.id,
+          id: Number(conversion.id), // Convert BigInt to number for JSON
           originalName: conversion.originalName,
           pdfFilename: outputFilename,
+          fileSize: conversion.fileSize,
+          downloadUrl: `/api/download/${conversion.id}`,
         });
       } catch (error) {
         console.error(`Error converting ${conversion.filename}:`, error);
@@ -82,10 +92,28 @@ export async function POST(request: NextRequest) {
       const mergedPdfBytes = await mergedPdf.save();
       await writeFile(mergedPath, mergedPdfBytes);
 
+      // Create a new DB record for merged file
+      const mergedEntry = await prisma.conversion.create({
+        data: {
+          originalName: mergedFilename,
+          filename: mergedFilename,
+          pdfFilename: mergedFilename,
+          filetype: 'application/pdf',
+          fileSize: mergedPdfBytes.length,
+          status: 'converted',
+        },
+      });
+
       return NextResponse.json({
         success: true,
         merged: true,
-        filename: mergedFilename,
+        files: [{
+          id: Number(mergedEntry.id),
+          originalName: mergedFilename,
+          pdfFilename: mergedFilename,
+          fileSize: mergedPdfBytes.length,
+          downloadUrl: `/api/download/${mergedEntry.id}`,
+        }],
       });
     }
 
