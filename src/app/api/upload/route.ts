@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync } from 'fs'; // Note: existsSync is not async but that's fine for simple checks
+import { getTempUploadDir } from '@/lib/utils'; // <--- ADDED: Import utility
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,12 +13,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
-    const uploadDir = join(process.cwd(), 'public', 'uploads');
+    // CRITICAL FIX: Use the Vercel-writable temporary directory
+    const uploadDir = getTempUploadDir();
     
-    // Create uploads directory if it doesn't exist
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
-    }
+    // Create uploads directory if it doesn't exist (safe in /tmp)
+    // We use mkdir from fs/promises to ensure it's async and robust
+    await mkdir(uploadDir, { recursive: true });
 
     const uploadedFiles = [];
 
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
       const uniqueName = `${Date.now()}-${sanitizedName}`;
       const filepath = join(uploadDir, uniqueName);
 
+      // Write file to the temporary directory
       await writeFile(filepath, buffer);
 
       uploadedFiles.push({

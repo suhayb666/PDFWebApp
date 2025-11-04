@@ -6,6 +6,7 @@ import { convertWordToPDF } from '@/lib/converters/wordConverter';
 import { convertExcelToPDF } from '@/lib/converters/excelConverter';
 import { PDFDocument } from 'pdf-lib';
 import { readFile, writeFile } from 'fs/promises';
+import { getTempUploadDir } from '@/lib/utils'; // <--- ADDED: Import utility
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +16,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
-    const uploadDir = join(process.cwd(), 'public', 'uploads');
+    // CRITICAL FIX: Use the Vercel-writable temporary directory
+    const uploadDir = getTempUploadDir();
     const convertedFiles = [];
 
     for (const file of files) {
@@ -33,12 +35,13 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Use uploadDir for input and output paths
       const inputPath = join(uploadDir, conversion.filename);
       const outputFilename = conversion.filename.replace(/\.[^/.]+$/, '') + '.pdf';
       const outputPath = join(uploadDir, outputFilename);
 
       try {
-        // Convert based on file type
+        // Conversion functions now read/write from the correct paths
         if (conversion.filetype.startsWith('image/')) {
           await convertImageToPDF(inputPath, outputPath);
         } else if (conversion.filetype.includes('word')) {
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
       const mergedPdf = await PDFDocument.create();
 
       for (const file of convertedFiles) {
+        // CRITICAL: Read from the temporary directory
         const pdfPath = join(uploadDir, file.pdfFilename);
         const pdfBytes = await readFile(pdfPath);
         const pdf = await PDFDocument.load(pdfBytes);
@@ -88,6 +92,7 @@ export async function POST(request: NextRequest) {
       }
 
       const mergedFilename = `merged-${Date.now()}.pdf`;
+      // CRITICAL: Write to the temporary directory
       const mergedPath = join(uploadDir, mergedFilename);
       const mergedPdfBytes = await mergedPdf.save();
       await writeFile(mergedPath, mergedPdfBytes);
