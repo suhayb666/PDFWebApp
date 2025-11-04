@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
+// CRITICAL FIX: This export forces the route to be dynamic, preventing
+// the Vercel build error related to accessing request.url.
+export const dynamic = 'force-dynamic'; 
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
