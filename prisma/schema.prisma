@@ -7,17 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model Conversion {
-  id            BigInt   @id @default(autoincrement())
-  filename      String
-  originalName  String
-  filetype      String
-  fileSize      Int
-  pdfFilename   String?
-  userEmail     String?
-  uploadTime    DateTime @default(now())
-  status        String
+  id           BigInt   @id @default(autoincrement())
+  filename     String
+  originalName String
+  filetype     String
+  fileSize     Int
+  pdfFilename  String?
+  userEmail    String?
+  uploadTime   DateTime @default(now())
+  status       String
 
   @@index([status])
   @@index([uploadTime])

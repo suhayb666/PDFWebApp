@@ -7,7 +7,6 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
-
 // Type definitions
 interface FileWithMetadata {
   id: number;
@@ -32,6 +31,7 @@ const File2PDF = () => {
   const [mergeFiles, setMergeFiles] = useState(false);
   const [email, setEmail] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [zipping, setZipping] = useState(false); // <-- ADDED for zip loading
 
   const acceptedTypes = [
     'image/png',
@@ -114,27 +114,27 @@ const File2PDF = () => {
 
   const convertFiles = async () => {
     if (files.length === 0) return;
-  
+
     setConverting(true);
-  
+
     try {
       // Step 1: Upload files first
       const formData = new FormData();
       files.forEach((fileItem) => {
         formData.append('files', fileItem.file);
       });
-  
+
       const uploadRes = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
-  
+
       if (!uploadRes.ok) {
         throw new Error('Failed to upload files');
       }
-  
+
       const uploadResult = await uploadRes.json();
-  
+
       // Step 2: Convert uploaded files
       const convertRes = await fetch('/api/convert', {
         method: 'POST',
@@ -146,13 +146,13 @@ const File2PDF = () => {
           merge: mergeFiles,
         }),
       });
-  
+
       if (!convertRes.ok) {
         throw new Error('Failed to convert files');
       }
-  
+
       const convertResult = await convertRes.json();
-  
+
       // Update UI with converted files
       setConverted(convertResult.files.map((f: any) => ({
         id: Number(f.id),
@@ -164,7 +164,7 @@ const File2PDF = () => {
       alert('Failed to convert files.');
       console.error(err);
     }
-  
+
     setConverting(false);
   };
 
@@ -175,7 +175,7 @@ const File2PDF = () => {
         throw new Error('Download failed');
       }
       const blob = await response.blob();
-  
+
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -183,18 +183,65 @@ const File2PDF = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-  
+
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Download error:", error);
       alert("Failed to download file.");
     }
   };
-  
 
-  const downloadAll = () => {
-    alert('Downloading all files as ZIP...');
+
+  // --- UPDATED FUNCTION ---
+  const downloadAll = async () => {
+    if (converted.length === 0) {
+      alert('No converted files to zip.');
+      return;
+    }
+
+    setZipping(true);
+
+    try {
+      // 1. Get the list of IDs from your 'converted' state
+      const conversionIds = converted.map(file => file.id);
+
+      // 2. Call your new zip API endpoint
+      // Make sure the path matches your file: /api/download/zip
+      const response = await fetch('/api/download/zip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ conversionIds: conversionIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download zip: ${response.statusText}`);
+      }
+
+      // 3. Get the zip file as a blob
+      const blob = await response.blob();
+
+      // 4. Create a temporary URL and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'converted_files.zip'; // The filename for the download
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error('Download all failed:', error);
+      alert('Failed to download zip file.');
+    } finally {
+      setZipping(false);
+    }
   };
+  // --- END OF UPDATED FUNCTION ---
 
   const sendEmail = () => {
     if (!email) {
@@ -367,37 +414,50 @@ const File2PDF = () => {
               <div
                 key={file.id}
                 className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
-  >
-              <div className="flex items-center space-x-3">
-      <FileText className="w-6 h-6 text-red-600" />
-      <div>
-        <p className="text-sm font-medium text-gray-900">
-          {file.pdfName}
-        </p>
-        <p className="text-xs text-gray-500">
-          {formatFileSize(file.size)}
-        </p>
-      </div>
-    </div>
-    <button
-      onClick={() => downloadFile(file.id, file.pdfName)}
-      className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
-    >
-      <Download className="w-4 h-4" />
-      <span className="text-sm font-medium">Download</span>
-    </button>
-  </div>
-))}
+              >
+                <div className="flex items-center space-x-3">
+                  <FileText className="w-6 h-6 text-red-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {file.pdfName}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {/* Note: This size might be the original file size, not the PDF size. */}
+                      {/* You might need to adjust your API to return the *new* PDF size. */}
+                      {formatFileSize(file.size)} 
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => downloadFile(file.id, file.pdfName)}
+                  className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="text-sm font-medium">Download</span>
+                </button>
+              </div>
+            ))}
             </div>
 
+            {/* --- UPDATED BUTTON --- */}
             {converted.length > 1 && (
               <button
                 onClick={downloadAll}
-                className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition mb-4"
+                disabled={zipping}
+                className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition mb-4 disabled:bg-gray-400 flex items-center justify-center space-x-2"
               >
-                Download All as ZIP
+                {zipping ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Zipping...</span>
+                  </>
+                ) : (
+                  <span>Download All as ZIP</span>
+                )}
               </button>
             )}
+            {/* --- END OF UPDATED BUTTON --- */}
+
 
             {/* Email Option */}
             <div className="border-t pt-6 mt-6">
