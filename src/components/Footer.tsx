@@ -8,12 +8,15 @@ export default function Footer() {
           © 2025 File2PDF. All rights reserved.
         </p>
         <div className="mt-4 space-x-6">
+        <Link href="/about" className="text-gray-400 hover:text-white transition text-sm">
+            About
+          </Link>
           <Link href="/privacy" className="text-gray-400 hover:text-white transition text-sm">
             Privacy Policy
           </Link>
-          <a href="#" className="text-gray-400 hover:text-white transition text-sm">
+          <Link href="/terms" className="text-gray-400 hover:text-white transition text-sm">
             Terms of Service
-          </a>
+          </Link>
         </div>
       </div>
     </footer>
