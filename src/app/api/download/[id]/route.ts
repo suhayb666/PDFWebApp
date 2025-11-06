@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
-import { join } from 'path';
 import prisma from '@/lib/db';
-import { getTempUploadDir } from '@/lib/utils';
 
 export async function GET(
   request: NextRequest,
@@ -23,15 +20,19 @@ export async function GET(
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    const uploadDir = getTempUploadDir();
-    const filepath = join(uploadDir, conversion.pdfFilename);
+    // Fetch the file from Vercel Blob Storage
+    const response = await fetch(conversion.pdfFilename);
+    
+    if (!response.ok) {
+      return NextResponse.json({ error: 'File not found in storage' }, { status: 404 });
+    }
 
-    const fileBuffer = await readFile(filepath);
+    const fileBuffer = await response.arrayBuffer();
 
     return new NextResponse(fileBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${conversion.originalName || conversion.pdfFilename}"`,
+        'Content-Disposition': `attachment; filename="${conversion.originalName || 'download.pdf'}"`,
       },
     });
   } catch (error) {

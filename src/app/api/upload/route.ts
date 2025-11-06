@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs'; // Note: existsSync is not async but that's fine for simple checks
-import { getTempUploadDir } from '@/lib/utils'; // <--- ADDED: Import utility
+import { put } from '@vercel/blob';
+import { generateUniqueFilename } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,32 +11,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
-    // CRITICAL FIX: Use the Vercel-writable temporary directory
-    const uploadDir = getTempUploadDir();
-    
-    // Create uploads directory if it doesn't exist (safe in /tmp)
-    // We use mkdir from fs/promises to ensure it's async and robust
-    await mkdir(uploadDir, { recursive: true });
-
     const uploadedFiles = [];
 
     for (const file of files) {
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
+      // Generate unique filename
+      const uniqueName = generateUniqueFilename(file.name);
 
-      // Sanitize filename to avoid issues with special characters
-      const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const uniqueName = `${Date.now()}-${sanitizedName}`;
-      const filepath = join(uploadDir, uniqueName);
-
-      // Write file to the temporary directory
-      await writeFile(filepath, buffer);
+      // Upload to Vercel Blob Storage
+      const blob = await put(uniqueName, file, {
+        access: 'public',
+        addRandomSuffix: false,
+      });
 
       uploadedFiles.push({
-        filename: uniqueName,
+        filename: blob.url, // Store the blob URL as filename
         originalName: file.name,
         filetype: file.type,
         fileSize: file.size,
+        blobUrl: blob.url, // Full URL for access
       });
     }
 

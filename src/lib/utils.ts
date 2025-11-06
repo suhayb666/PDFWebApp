@@ -1,46 +1,69 @@
-import { unlink } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { del } from '@vercel/blob';
 import prisma from './db';
 
-// Get the correct upload directory (writable on Vercel)
-export function getTempUploadDir(): string {
-  // In production (Vercel), use /tmp which is writable
-  // In development, use os.tmpdir() or a local temp folder
-  return process.env.NODE_ENV === 'production' 
-    ? '/tmp/uploads' 
-    : join(tmpdir(), 'uploads');
-}
-
-// Auto-delete files after 1 hour
+// Auto-delete files after 1 hour from Vercel Blob Storage
 export async function cleanupOldFiles() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
  
+  console.log(`[Cleanup] Starting cleanup job for files uploaded before: ${oneHourAgo.toISOString()}`);
+
   const oldConversions = await prisma.conversion.findMany({
     where: {
       uploadTime: {
         lt: oneHourAgo,
       },
+      status: {
+        in: ['converted', 'failed', 'pending']
+      }
     },
   });
 
-  const uploadDir = getTempUploadDir();
+  console.log(`[Cleanup] Found ${oldConversions.length} expired records to process.`);
+
+  let filesDeletedCount = 0;
 
   for (const conversion of oldConversions) {
     try {
-      await unlink(join(uploadDir, conversion.filename));
-      if (conversion.pdfFilename) {
-        await unlink(join(uploadDir, conversion.pdfFilename));
+      // Delete from Vercel Blob Storage using the stored URL
+      if (conversion.filename) {
+        try {
+          await del(conversion.filename);
+          filesDeletedCount++;
+          console.log(`[Cleanup] Deleted blob: ${conversion.filename}`);
+        } catch (error) {
+          console.error(`[Cleanup] Error deleting blob ${conversion.filename}:`, error);
+        }
       }
+      
+      if (conversion.pdfFilename && conversion.pdfFilename !== conversion.filename) {
+        try {
+          await del(conversion.pdfFilename);
+          filesDeletedCount++;
+          console.log(`[Cleanup] Deleted blob: ${conversion.pdfFilename}`);
+        } catch (error) {
+          console.error(`[Cleanup] Error deleting blob ${conversion.pdfFilename}:`, error);
+        }
+      }
+      
+      // Delete database record
       await prisma.conversion.delete({
         where: { id: conversion.id },
       });
     } catch (error) {
-      console.error('Cleanup error:', error);
+      console.error('[Cleanup] Error processing conversion:', error);
     }
   }
+
+  console.log(`[Cleanup] Cleanup complete. Files deleted: ${filesDeletedCount}`);
+  
+  return {
+    recordsDeleted: oldConversions.length,
+    filesDeleted: filesDeletedCount,
+  };
 }
 
-// Note: setInterval doesn't work in serverless functions
-// You need to set up a Vercel Cron Job to call an API route that triggers cleanupOldFiles()
-// Example: Create /api/cron/cleanup/route.ts and configure vercel.json with cron schedule
+// Helper function to generate unique filenames
+export function generateUniqueFilename(originalName: string): string {
+  const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
+  return `${Date.now()}-${sanitizedName}`;
+}

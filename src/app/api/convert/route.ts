@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { join } from 'path';
+import { put } from '@vercel/blob';
 import prisma from '@/lib/db';
+import { generateUniqueFilename } from '@/lib/utils';
 import { convertImageToPDF } from '@/lib/converters/imageConverter';
 import { convertWordToPDF } from '@/lib/converters/wordConverter';
 import { convertExcelToPDF } from '@/lib/converters/excelConverter';
 import { PDFDocument } from 'pdf-lib';
-import { readFile, writeFile } from 'fs/promises';
-import { getTempUploadDir } from '@/lib/utils'; // <--- ADDED: Import utility
+import { writeFile, unlink, readFile } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,15 +18,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
-    // CRITICAL FIX: Use the Vercel-writable temporary directory
-    const uploadDir = getTempUploadDir();
     const convertedFiles = [];
+    const tempDir = tmpdir();
 
     for (const file of files) {
-      // Create DB entry WITHOUT specifying id (let Prisma auto-generate)
+      // Create DB entry
       const conversion = await prisma.conversion.create({
         data: {
-          filename: file.filename,
+          filename: file.filename, // This is the blob URL
           originalName: file.originalName,
           filetype: file.filetype,
           fileSize: file.fileSize,
@@ -35,37 +36,57 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Use uploadDir for input and output paths
-      const inputPath = join(uploadDir, conversion.filename);
-      const outputFilename = conversion.filename.replace(/\.[^/.]+$/, '') + '.pdf';
-      const outputPath = join(uploadDir, outputFilename);
-
       try {
-        // Conversion functions now read/write from the correct paths
+        // Download the file from Blob Storage to temp location
+        const response = await fetch(file.filename);
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        const tempInputPath = join(tempDir, `input-${Date.now()}-${Math.random()}`);
+        await writeFile(tempInputPath, buffer);
+
+        const outputFilename = generateUniqueFilename(
+          conversion.originalName.replace(/\.[^/.]+$/, '') + '.pdf'
+        );
+        const tempOutputPath = join(tempDir, `output-${Date.now()}-${Math.random()}.pdf`);
+
+        // Convert based on file type
         if (conversion.filetype.startsWith('image/')) {
-          await convertImageToPDF(inputPath, outputPath);
+          await convertImageToPDF(tempInputPath, tempOutputPath);
         } else if (conversion.filetype.includes('word')) {
-          await convertWordToPDF(inputPath, outputPath);
+          await convertWordToPDF(tempInputPath, tempOutputPath);
         } else if (
           conversion.filetype.includes('sheet') ||
           conversion.filetype.includes('excel')
         ) {
-          await convertExcelToPDF(inputPath, outputPath);
+          await convertExcelToPDF(tempInputPath, tempOutputPath);
         }
 
-        // Update database
+        // Upload converted PDF to Blob Storage
+        const pdfBuffer = await readFile(tempOutputPath);
+        const pdfBlob = await put(outputFilename, pdfBuffer, {
+          access: 'public',
+          addRandomSuffix: false,
+          contentType: 'application/pdf',
+        });
+
+        // Clean up temp files
+        await unlink(tempInputPath).catch(() => {});
+        await unlink(tempOutputPath).catch(() => {});
+
+        // Update database with PDF blob URL
         await prisma.conversion.update({
           where: { id: conversion.id },
           data: {
             status: 'converted',
-            pdfFilename: outputFilename,
+            pdfFilename: pdfBlob.url,
           },
         });
 
         convertedFiles.push({
-          id: Number(conversion.id), // Convert BigInt to number for JSON
+          id: Number(conversion.id),
           originalName: conversion.originalName,
-          pdfFilename: outputFilename,
+          pdfFilename: pdfBlob.url,
           fileSize: conversion.fileSize,
           downloadUrl: `/api/download/${conversion.id}`,
         });
@@ -83,26 +104,30 @@ export async function POST(request: NextRequest) {
       const mergedPdf = await PDFDocument.create();
 
       for (const file of convertedFiles) {
-        // CRITICAL: Read from the temporary directory
-        const pdfPath = join(uploadDir, file.pdfFilename);
-        const pdfBytes = await readFile(pdfPath);
+        // Download PDF from blob storage
+        const response = await fetch(file.pdfFilename);
+        const pdfBytes = await response.arrayBuffer();
         const pdf = await PDFDocument.load(pdfBytes);
         const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
         copiedPages.forEach((page) => mergedPdf.addPage(page));
       }
 
-      const mergedFilename = `merged-${Date.now()}.pdf`;
-      // CRITICAL: Write to the temporary directory
-      const mergedPath = join(uploadDir, mergedFilename);
+      const mergedFilename = generateUniqueFilename(`merged-${Date.now()}.pdf`);
       const mergedPdfBytes = await mergedPdf.save();
-      await writeFile(mergedPath, mergedPdfBytes);
 
-      // Create a new DB record for merged file
+      // Upload merged PDF to Blob Storage
+      const mergedBlob = await put(mergedFilename, Buffer.from(mergedPdfBytes), {
+        access: 'public',
+        addRandomSuffix: false,
+        contentType: 'application/pdf',
+      });
+
+      // Create DB record for merged file
       const mergedEntry = await prisma.conversion.create({
         data: {
           originalName: mergedFilename,
-          filename: mergedFilename,
-          pdfFilename: mergedFilename,
+          filename: mergedBlob.url,
+          pdfFilename: mergedBlob.url,
           filetype: 'application/pdf',
           fileSize: mergedPdfBytes.length,
           status: 'converted',
@@ -115,7 +140,7 @@ export async function POST(request: NextRequest) {
         files: [{
           id: Number(mergedEntry.id),
           originalName: mergedFilename,
-          pdfFilename: mergedFilename,
+          pdfFilename: mergedBlob.url,
           fileSize: mergedPdfBytes.length,
           downloadUrl: `/api/download/${mergedEntry.id}`,
         }],
